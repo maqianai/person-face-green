@@ -11,12 +11,13 @@ person_face_green.py — 对视频中人物肩膀以上的头颈区域打绿幕�
   - macOS 自带 Swift + Vision 框架（人脸检测，仅 macOS 需要；无则可用 --no-detect + anchors.json）
 
 典型用法：
-  python3 person_face_green.py 输入.mp4
+  python3 person_face_green.py 输入.mp4                    # 默认静音（去音轨）
   python3 person_face_green.py 输入.mp4 4 13 --color 0,255,0 -o 输出.mp4
+  python3 person_face_green.py 输入.mp4 --keep-audio       # 仅此情形保留原音频
   python3 person_face_green.py 输入.mp4 --no-detect --anchors anchors.json
 
 原理：逐帧检测人脸框 -> 由人脸框推导覆盖头发+脸+脖子的椭圆区域（下沿停在肩线）
-      -> 画纯绿色 -> 帧序列编码回视频并合入原音频。
+      -> 画纯绿色 -> 帧序列编码回视频。音频默认静音（-an）；仅 --keep-audio 时合入原音频。
 """
 
 import argparse
@@ -132,6 +133,8 @@ def main():
     ap.add_argument("--no-detect", action="store_true", help="跳过人脸检测，仅用 anchors.json")
     ap.add_argument("--anchors", help="手动锚点 JSON 文件（帧名->[x,y,w,h]）")
     ap.add_argument("--keep-frames", action="store_true", help="保留中间帧目录（调试用）")
+    ap.add_argument("--keep-audio", action="store_true",
+                    help="保留原视频音频（默认静音去音轨；仅用户明确要求不静音时才加此参数）")
     args = ap.parse_args()
 
     ffmpeg = find_ffmpeg()
@@ -222,24 +225,32 @@ def main():
             im.save(os.path.join(painted, name))
 
         print(f"已打绿幕帧: {hit}/{len(names)}")
+        print(f"音频: {'保留原音频' if args.keep_audio else '静音（去音轨）'}")
         print("编码 ...")
-        # 合入原音频：从源视频取音频（若有截取区间需同步偏移）
         # 用 filter 修正 JPEG 序列的 full-range -> limited，避免 yuvj420p 色偏
         cmd = [ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
                "-framerate", str(args.fps), "-i", os.path.join(painted, "f_%04d.jpg")]
-        cmd += ss_args + ["-i", src]
+        if args.keep_audio:
+            # 合入原音频：所有 -i 必须排在 -map/-filter_complex 等输出选项之前
+            # （若有截取区间需对源视频同步 -ss/-to 偏移）
+            cmd += ss_args + ["-i", src]
         cmd += ["-filter_complex", "[0:v]scale=in_range=full:out_range=limited,format=yuv420p[v]",
-                "-map", "[v]", "-map", "1:a:0?",
-                "-c:v", "libx264", "-preset", "medium", "-crf", str(args.crf),
-                "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
-                "-shortest", "-movflags", "+faststart", out]
+                "-map", "[v]"]
+        if args.keep_audio:
+            cmd += ["-map", "1:a:0?", "-c:a", "aac", "-b:a", "128k", "-shortest"]
+        else:
+            # 默认静音：只输出视频流，不产生音轨
+            cmd += ["-an"]
+        cmd += ["-c:v", "libx264", "-preset", "medium", "-crf", str(args.crf),
+                "-pix_fmt", "yuv420p", "-movflags", "+faststart", out]
         ret = subprocess.run(cmd).returncode
         if ret != 0:
             print(f"错误：编码失败 ({ret})", file=sys.stderr)
             sys.exit(ret)
 
         size = os.path.getsize(out) / 1024 / 1024
-        print(f"完成: {out} ({size:.2f} MB)")
+        audio_tag = "含原音频" if args.keep_audio else "静音无音轨"
+        print(f"完成: {out} ({size:.2f} MB, {audio_tag})")
     finally:
         if args.keep_frames:
             print(f"调试帧保留在: {tmp}")

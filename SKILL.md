@@ -1,6 +1,6 @@
 ---
 name: person-face-green
-description: 对视频中人物肩膀以上的头颈区域打纯绿幕并生成新的 mp4 文件到同目录，用于换头或后期抠像。当用户要求「给视频人物头部/脸上打绿幕」「肩膀上方打绿幕」「准备换头要绿底」「person face green screen」「给某段视频做绿幕抠像素材」时使用。支持指定视频、指定时间段、自定义绿幕颜色，只覆盖人物镜头、不影响无人空镜、不碰肩膀以下。
+description: 对视频中人物肩膀以上的头颈区域打纯绿幕并生成新的 mp4 文件到同目录，用于换头或后期抠像。当用户要求「给视频人物头部/脸上打绿幕」「肩膀上方打绿幕」「准备换头要绿底」「person face green screen」「给某段视频做绿幕抠像素材」时使用。支持指定视频、指定时间段、自定义绿幕颜色，只覆盖人物镜头、不影响无人空镜、不碰肩膀以下。输出默认静音（去音轨）；仅当用户明确说「不静音 / 保留原音频 / 保留声音」时才加 --keep-audio。
 agent_created: true
 ---
 
@@ -24,6 +24,7 @@ agent_created: true
 - 时间段（默认整段）
 - 绿幕颜色（默认纯绿 `0,255,0`）
 - 输出文件名（默认 `<源文件名>_green.mp4`，同目录）
+- **音频（默认静音）**：只有用户提示词明确说「不静音 / 保留原音频 / 保留声音 / 保留音轨」时，才加 `--keep-audio` 保留原声；其它一切情形（包括没提音频）都按默认静音处理，不要主动保留。
 
 ### 2. 运行主脚本
 
@@ -33,11 +34,14 @@ agent_created: true
 PY=/Users/fofo/.workbuddy/binaries/python/versions/3.13.12/bin/python3
 S=~/.workbuddy/skills/person-face-green/scripts/person_face_green.py
 
-# 整段视频
+# 整段视频（默认静音）
 $PY "$S" /path/to/input.mp4
 
 # 指定时间段 4~13s、自定义绿幕色、指定输出
 $PY "$S" /path/to/input.mp4 4 13 --color 0,255,0 -o /path/to/out_green.mp4
+
+# 用户明确要求保留原声音时，才加 --keep-audio
+$PY "$S" /path/to/input.mp4 --keep-audio
 ```
 
 脚本自动：
@@ -46,7 +50,7 @@ $PY "$S" /path/to/input.mp4 4 13 --color 0,255,0 -o /path/to/out_green.mp4
 - 用 `VNDetectFaceRectanglesRequest` 逐帧检测人脸框；
 - 由人脸框推导覆盖「头发+脸+脖」的椭圆，下沿停在肩线附近（参数 `--pad-x/--pad-top/--pad-bottom` 可调）；
 - 用 `scale=in_range=full:out_range=limited` 修正 JPEG 帧序列色彩，避免 yuvj420p 色偏；
-- 保留原视频音频。
+- **默认静音**：只输出视频流（`-an`），成片无音轨；只有加 `--keep-audio` 时才合入原音频。
 
 ### 3. 人脸检测失效的镜头（背影 / 侧身 / 运动模糊）
 
@@ -73,7 +77,8 @@ done
 
 - 有脸帧：头部应被纯绿完整覆盖，肩膀以下保留；
 - 无人空镜：不应出现绿色；
-- 时长、分辨率、帧率、音频与原片段一致。
+- 时长、分辨率、帧率与原片段一致；
+- 音频按预期：默认成片无音轨（`ffprobe` 只看到视频流）；若传了 `--keep-audio` 才应有音轨且同步。
 
 ## 参数速查
 
@@ -89,6 +94,7 @@ done
 | `--no-detect` | 关 | 跳过人脸检测 |
 | `--anchors` | 无 | 手动锚点 JSON |
 | `--keep-frames` | 关 | 保留中间帧调试 |
+| `--keep-audio` | 关（默认静音） | 保留原音频；仅用户明确要求不静音时加 |
 
 ## 依赖与限制
 

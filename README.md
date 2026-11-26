@@ -17,7 +17,8 @@
 - 由人脸框推导覆盖「头发+脸+脖」的椭圆，下沿停在肩线
 - 人物忽远忽近时绿幕随脸框自动缩放
 - 背影 / 侧脸 / 运动模糊等检测不到脸的镜头，可用 `anchors.json` 手动补位
-- 保留原视频音频；修正 JPEG 帧序列色彩，避免 yuvj420p 色偏
+- **默认静音**（去音轨）；仅加 `--keep-audio` 时保留原音频
+- 修正 JPEG 帧序列色彩，避免 yuvj420p 色偏
 - 可指定时间段、自定义绿幕颜色、调整覆盖区域
 
 ## 目录结构
@@ -51,6 +52,8 @@ git clone https://github.com/maqianai/person-face-green.git \
 
 WorkBuddy 会加载 `SKILL.md`，调用脚本并按工作流自验证。
 
+**音频**：默认静音（成片无音轨）。只有你明确说「不静音 / 保留原音频 / 保留声音」时才会保留原声。命令行对应 `--keep-audio`。
+
 项目级共享：把仓库放到 `<项目>/.workbuddy/skills/person-face-green` 即可。
 
 ## 二、作为命令行工具使用
@@ -78,6 +81,9 @@ $PY "$S" input.mp4 4 13 --color 255,0,255 -o out_green.mp4
 
 # 检测不到的镜头用手动锚点补齐
 $PY "$S" input.mp4 --anchors anchors.json
+
+# 用户明确要求保留原声音时才加 --keep-audio（默认静音）
+$PY "$S" input.mp4 --keep-audio
 ```
 
 ### 参数
@@ -96,6 +102,7 @@ $PY "$S" input.mp4 --anchors anchors.json
 | `--no-detect` | 关 | 跳过人脸检测，仅用 anchors |
 | `--anchors` | 无 | 手动锚点 JSON |
 | `--keep-frames` | 关 | 保留中间帧调试 |
+| `--keep-audio` | 关（默认静音） | 保留原音频；仅用户明确要求不静音时加 |
 
 更多细节见 [`references/usage.md`](references/usage.md)。
 
@@ -108,7 +115,7 @@ $PY "$S" input.mp4 --anchors anchors.json
   → 合并 anchors.json（补检不到的帧）
   → 由人脸框推导椭圆：[x±0.5w, y-0.85h, y+h+0.3h]
   → Pillow 画纯绿
-  → ffmpeg 帧序列编码（full→limited 修色）+ 合入原音频
+  → ffmpeg 帧序列编码（full→limited 修色）+ 默认静音去音轨（--keep-audio 才保留原音频）
   → 输出 mp4
 ```
 
@@ -118,8 +125,9 @@ $PY "$S" input.mp4 --anchors anchors.json
 
 - 有脸帧 **174 / 270** 自动打绿，抽帧确认头部完整覆盖、肩膀以下保留；
 - 空镜（0s、2.5s）无绿色；
-- 输出规格 `9.00s / 1298x720 / 30fps / H.264 yuv420p / AAC 音频`，与源片段一致；
-- 传入 anchors 后打绿帧增至 **181**，转场帧补齐。
+- 输出规格 `9.00s / 1298x720 / 30fps / H.264 yuv420p`，与源片段一致（**默认静音无音轨**；加 `--keep-audio` 才有 AAC 音频）；
+- 传入 anchors 后打绿帧增至 **181**，转场帧补齐；
+- 音频双模式已自测：默认无音轨、`--keep-audio` 有音轨且同步。
 
 复现：
 
